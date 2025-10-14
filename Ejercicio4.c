@@ -1,0 +1,133 @@
+/*Ejercicio en el que se usa semáforos, procesos y memoria compartida; se tiene un arreglo de enteros de 1000 elementos
+cada proceso suma parcialmente todos los enteros correspondiente a un rango del arreglo, esta suma se guarda en el
+recurso compartido y posteriormente el siguiente proceso, conforme a su rango, obtiene su suma parcial y la suma
+al recurso compartido,todo esto con semáforos para llevar un orden en la entrada de procesos al recurso compartido,
+al final el padre muestra la suma TOTAL de todo el arreglo*/
+
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <time.h>
+#include <sys/wait.h>
+#include <sys/shm.h>
+#include <sys/sem.h>
+#include <sys/ipc.h>
+
+#define N 1000
+#define numProcesos 4
+/*Definimos los semáforos*/
+#define semhijo1 0
+#define semhijo2 1
+#define semhijo3 2
+#define semhijo4 3
+#define sempadre 4
+
+key_t shm_key, llave; int id, pid, semid; int *shm, sum_total;
+
+
+int process_fork(int);
+int sumaPar(int *,int,int);
+void init_sem(int *);
+void V(int, int);
+void P(int, int);
+
+int main(){
+	//Creamos el segmento de memoria compartida
+	shm_key = 0x567;
+	id = shmget(shm_key, sizeof(sum_total), (IPC_CREAT|0660));
+	shm = (int *)shmat(id, NULL, 0);
+	
+	//Iniciamos los semáforos
+	init_sem(&semid);
+	*shm = 0;
+	
+	static int arre[N];
+	int pid;
+	srand((unsigned)time(NULL));
+	
+	for(int i = 0; i < N; i++)
+		arre[i] = rand() % 20;
+
+	pid = process_fork(numProcesos);
+	
+	switch(pid)
+	{
+		case 0:
+			P(semid,sempadre);
+			/*for(int i = 1; i <= numProcesos; i++)
+				wait(&i);*/
+			printf("Soy el proceso padre y la suma de todos los procesos es: %d\n", *shm);
+			exit(0);
+		case 1:
+			P(semid, semhijo1);
+			int sumaP = sumaPar(arre, 0, 249);
+			printf("La suma parcial del proceso 1: %d\n", sumaP);
+			*shm = *shm + sumaP;
+			V(semid, semhijo2);
+			exit(0);
+		case 2:
+			P(semid, semhijo2);
+			int sumaP2 = sumaPar(arre, 250, 499);
+			printf("La suma parcial del proceso 2: %d\n", sumaP2);
+			*shm = *shm + sumaP2;
+			V(semid, semhijo3);
+			exit(0);
+		case 3:
+			P(semid, semhijo3);
+			int sumaP3 = sumaPar(arre, 500, 749);
+			printf("La suma parcial del proceso 3: %d\n", sumaP3);
+			*shm = *shm + sumaP3;
+			V(semid, semhijo4);
+			exit(0);
+		case 4: 
+			P(semid, semhijo4);
+			int sumaP4 = sumaPar(arre, 750, 999);
+			printf("La suma parcial del proceso 4: %d\n", sumaP4);
+			*shm = *shm + sumaP4;
+			V(semid, sempadre);
+			exit(0);
+	}
+	return 0;
+}
+int process_fork(int nProcesos){
+	for(int i = 1; i <= nProcesos; i++)
+		if(fork() == 0)
+			return i;
+	return 0;
+}
+int sumaPar(int *arre,int lim_inf, int lim_sup){
+	int suma = 0;
+	for(int i = lim_inf; i <= lim_sup; i++)
+		suma = suma + arre[i];
+	return suma;
+}
+void init_sem(int *sem){
+	llave = 0x568;
+	if((*sem = semget(llave, 5, IPC_CREAT|0600)) == -1)
+		exit(0);
+	//Cierro el semaforo del proceso padre
+	semctl(*sem, sempadre,SETVAL, 0);
+	//Abro al hijo 1 y cierro al padre
+	semctl(*sem, semhijo1,SETVAL, 1);
+	semctl(*sem, semhijo2,SETVAL, 0);
+	semctl(*sem, semhijo3,SETVAL, 0);
+	semctl(*sem, semhijo4,SETVAL, 0);
+}
+void V(int sem, int n){
+	struct sembuf sop;
+	/*Construcción arreglo operaciones de un elemento*/
+	sop.sem_num = n;
+	sop.sem_op = 1;
+	sop.sem_flg = 0;
+	
+	semop(sem, &sop, 1);
+}
+void P(int sem, int n){
+	struct sembuf sop;
+	sop.sem_num = n;
+	sop.sem_op = -1;
+	sop.sem_flg = 0;
+	
+	semop(sem, &sop, 1);
+}
