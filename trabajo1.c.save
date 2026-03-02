@@ -1,0 +1,54 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/wait.h>
+#include <time.h>
+
+#define N 10000
+#define numProcesos 5
+
+int Maximo(int *apun, int lim_inf, int lim_sup){
+	int max = apun[lim_inf];
+	for(int i = (lim_inf + 1); i <= lim_sup; i++)
+		if(apun[i] > max)
+			max = apun[i];
+	return max;
+}
+
+int main(){	
+	static int apun[N];
+	srand((unsigned)time(NULL));
+
+	for(int i = 0; i < N; i++)
+		apun[i] = rand() % 10000;
+	
+	int rango = N / numProcesos;
+	pid_t pids[numProcesos];
+	
+	for(int p = 0; p < numProcesos; p++){
+		int lim_inf = p*rango;
+		int lim_sup;
+		if(p == (numProcesos - 1))
+			lim_sup = N - 1;
+		else
+			lim_sup = lim_inf + (rango - 1);
+
+		pid_t pid = fork();
+		if(pid == 0){
+			int maxp = Maximo(apun,lim_inf, lim_sup);
+			printf("Proceso: %d (PID=%d)---->Max[%d...%d] = %d\n", p+1, getpid(), lim_inf, lim_sup, maxp);
+			fflush(stdout);
+			_exit(0);
+		}else if(pid > 0){
+			pids[p] = pid;
+		}
+	}
+
+	for(int p = 0; p < numProcesos; p++){
+		int status;
+		waitpid(pids[p], &status, 0);//(//0 para especificar que el padre se bloquea hasta que el hijo termine)
+	}
+
+	return 0;
+}
+x1
